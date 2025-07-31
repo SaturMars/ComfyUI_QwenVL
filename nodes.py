@@ -66,6 +66,7 @@ class Qwen2VL:
             },
             "optional": {
                 "image": ("IMAGE",),
+                "model_path": ("STRING", {"default": ""}),
                 "video_path": ("STRING", {"default": ""}),
             },
         }
@@ -78,6 +79,7 @@ class Qwen2VL:
         self,
         text,
         model,
+        model_path,
         quantization,
         keep_model_loaded,
         temperature,
@@ -94,9 +96,16 @@ class Qwen2VL:
         else:
             model_id = f"Skywork/{model}"
         # put downloaded model to model/LLM dir
-        self.model_checkpoint = os.path.join(
-            folder_paths.models_dir, "LLM", os.path.basename(model_id)
-        )
+        # 处理模型路径参数
+        if model_path:
+            if os.path.exists(model_path):
+                self.model_checkpoint = model_path
+            else:
+                raise FileNotFoundError(f"模型路径不存在: {model_path}")
+        else:
+            self.model_checkpoint = os.path.join(
+                folder_paths.models_dir, "LLM", os.path.basename(model_id)
+            )
 
         if not os.path.exists(self.model_checkpoint):
             from huggingface_hub import snapshot_download
