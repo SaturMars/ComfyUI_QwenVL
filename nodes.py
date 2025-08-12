@@ -40,7 +40,21 @@ class Qwen2VL:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "text": ("STRING", {"default": "", "multiline": True}),
+                "system_prompt": (
+                    "STRING",
+                    {
+                        "default": "你是一个得力的AI助手。",
+                        "multiline": True,
+                    },
+                    
+                ),
+                "user_prompt": (
+                    "STRING", 
+                    {
+                        "default": "请分析这张图片或视频。", 
+                        "multiline": True
+                    }
+                ),
                 "model": (
                     [
                         "Qwen2.5-VL-3B-Instruct",
@@ -77,7 +91,7 @@ class Qwen2VL:
 
     def inference(
         self,
-        text,
+        system_prompt,
         model,
         model_path,
         quantization,
@@ -85,6 +99,7 @@ class Qwen2VL:
         temperature,
         max_new_tokens,
         seed,
+        user_prompt="",
         image=None,
         video_path=None,
     ):
@@ -150,15 +165,26 @@ class Qwen2VL:
             )
 
         with torch.no_grad():
-            messages = [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": text},
-                    ],
-                }
-            ]
-
+            # 构建消息列表
+            messages = []
+            
+            # 添加system消息
+            if system_prompt.strip():
+                messages.append({
+                    "role": "system",
+                    "content": [{"type": "text", "text": system_prompt}]
+                })
+            
+            # 构建用户消息内容
+            user_content = []
+            
+            # 如果没有user_prompt但有image或video，添加默认文本
+            if not user_prompt.strip() and (image is not None or video_path):
+                user_content.append({"type": "text", "text": "Please describe what you see."})
+            elif user_prompt.strip():
+                user_content.append({"type": "text", "text": user_prompt})
+            
+            # 处理视频输入
             if video_path:
                 print("deal video_path", video_path)
                 # 使用FFmpeg处理视频
@@ -175,20 +201,31 @@ class Qwen2VL:
                 ]
                 subprocess.run(ffmpeg_command, check=True)
 
-                # 添加处理后的视频信息到消息
-                messages[0]["content"].insert(0, {
+                # 添加处理后的视频信息到用户消息
+                user_content.insert(0, {
                     "type": "video",
                     "video": processed_video_path,
                 })
 
             # 处理图像输入
-            else:
+            elif image is not None:
                 print("deal image")
                 pil_image = tensor_to_pil(image)
-                messages[0]["content"].insert(0, {
+                user_content.insert(0, {
                     "type": "image",
                     "image": pil_image,
                 })
+            
+            # 添加用户消息
+            if user_content:
+                messages.append({
+                    "role": "user",
+                    "content": user_content
+                })
+            
+            # 如果没有任何消息，返回错误
+            if not messages:
+                return ("Error: No input provided. Please provide either system prompt, user prompt, image, or video.",)
 
             # 准备输入
             text = self.processor.apply_chat_template(
